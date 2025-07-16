@@ -81,7 +81,10 @@
         const dl = document.createElement('a');
         dl.href = url;
         dl.download = `vinyl_groove_part${idx + 1}.svg`;
+        dl.style.display = 'none';
+        document.body.appendChild(dl);
         dl.click();
+        document.body.removeChild(dl);
       });
     };
 
@@ -125,20 +128,19 @@
       const outerRad = 5.75 * scaleNum;
       const innerRad = 2.25 * scaleNum;
       const thetaIter = 5880;
-
-      let radius = outerRad;
-      let theta = 0;
-      let path = "M";
-      let xValLast = 0, yValLast = 0;
       const incrNum = 2 * Math.PI / thetaIter;
       const radIncrNum = (2 * amplitude + spacing) / thetaIter;
       const center = 6 * scaleNum;
+      let radius = outerRad;
+      let xValLast = 0, yValLast = 0;
       let indexPtr = 0;
-      const indexIncr = Math.floor(audioData.length / ((outerRad - innerRad) / radIncrNum));
+      let indexIncr = Math.floor(audioData.length / ((outerRad - innerRad) / radIncrNum));
+      if (indexIncr < 1) indexIncr = 1;
 
+      let path = "M";
       while (radius > innerRad && indexPtr < audioData.length - thetaIter * indexIncr) {
-        for (theta = 0; theta < 2 * Math.PI; theta += incrNum) {
-          const mod = radius + audioData[indexPtr % audioData.length] * amplitude;
+        for (let theta = 0; theta < 2 * Math.PI; theta += incrNum) {
+          const mod = radius + (audioData[indexPtr % audioData.length] * amplitude);
           const x = center + mod * Math.cos(theta);
           const y = center - mod * Math.sin(theta);
           if (((x - xValLast) ** 2 + (y - yValLast) ** 2) > (minDist * minDist)) {
