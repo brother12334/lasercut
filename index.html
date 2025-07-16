@@ -5,8 +5,7 @@
   <title>Vinyl Groove SVG Generator</title>
   <style>
     body { font-family: sans-serif; padding: 2em; background: #f0f0f0; }
-    #waveform { width: 100%; height: 100px; background: white; margin: 1em 0; }
-    canvas { border: 1px solid #ccc; }
+    #svgPreview { width: 100%; height: 400px; border: 1px solid #ccc; margin-top: 1em; background: #fff; }
     label, select, input, button { margin: 0.5em 0; display: block; }
   </style>
 </head>
@@ -26,49 +25,87 @@
   <label for="cutoff">Low Pass Filter Cutoff (Hz):</label>
   <input type="number" id="cutoff" value="2500">
 
+  <label for="splitCount">How many SVGs to split into?</label>
+  <select id="splitCount">
+    <option value="1">1</option>
+    <option value="3">3</option>
+    <option value="6">6</option>
+  </select>
+
+  <button id="previewAudio">Play Filtered Audio</button>
   <button id="generateBtn">Generate SVG</button>
+  <div id="svgPreview"></div>
   <a id="downloadLink" style="display:none;">Download SVG</a>
 
   <script>
+    let audioBuffer, filteredAudio;
+
     const fileInput = document.getElementById('audioFile');
     const recordSize = document.getElementById('recordSize');
     const cutoffInput = document.getElementById('cutoff');
     const generateBtn = document.getElementById('generateBtn');
+    const previewBtn = document.getElementById('previewAudio');
     const downloadLink = document.getElementById('downloadLink');
+    const svgPreview = document.getElementById('svgPreview');
+    const splitCountInput = document.getElementById('splitCount');
 
-    generateBtn.onclick = () => {
+    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    fileInput.onchange = async () => {
       const file = fileInput.files[0];
-      if (!file) {
-        alert("Please upload a WAV file.");
-        return;
-      }
-
+      if (!file) return;
       const reader = new FileReader();
       reader.onload = async (e) => {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const buffer = await audioCtx.decodeAudioData(e.target.result);
-
-        // Get mono data from first channel
-        const inputData = buffer.getChannelData(0);
-
-        // Low-pass filter using simple method (not perfect)
-        const filteredData = lowPassFilter(inputData, +cutoffInput.value, buffer.sampleRate);
-
-        // Normalize
-        const max = Math.max(...filteredData.map(x => Math.abs(x)));
-        const normalized = filteredData.map(x => x / max);
-
-        // Generate SVG groove
-        const svg = generateGrooveSVG(normalized, recordSize.value);
-        const blob = new Blob([svg], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(blob);
-        downloadLink.href = url;
-        downloadLink.download = 'vinyl_groove.svg';
-        downloadLink.textContent = 'Download SVG';
-        downloadLink.style.display = 'block';
+        audioBuffer = await audioCtx.decodeAudioData(e.target.result);
+        filteredAudio = applyFilters(audioBuffer.getChannelData(0), +cutoffInput.value, audioBuffer.sampleRate);
       };
       reader.readAsArrayBuffer(file);
     };
+
+    previewBtn.onclick = () => {
+      if (!filteredAudio) return alert("Upload and filter audio first.");
+      const previewBuffer = audioCtx.createBuffer(1, filteredAudio.length, audioCtx.sampleRate);
+      previewBuffer.copyToChannel(Float32Array.from(filteredAudio), 0);
+      const source = audioCtx.createBufferSource();
+      source.buffer = previewBuffer;
+      source.connect(audioCtx.destination);
+      source.start();
+    };
+
+    generateBtn.onclick = () => {
+      if (!filteredAudio) return alert("Upload and filter audio first.");
+      const recordInches = +recordSize.value;
+      const splitCount = +splitCountInput.value;
+      const parts = splitAudio(filteredAudio, splitCount);
+      svgPreview.innerHTML = '';
+      downloadLink.style.display = 'none';
+
+      parts.forEach((part, idx) => {
+        const svg = generateGrooveSVG(part, recordInches, idx);
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const dl = downloadLink.cloneNode();
+        dl.href = url;
+        dl.download = `vinyl_groove_part${idx + 1}.svg`;
+        dl.textContent = `Download SVG Part ${idx + 1}`;
+        dl.style.display = 'block';
+        svgPreview.appendChild(dl);
+
+        const inline = document.createElement('div');
+        inline.innerHTML = svg;
+        svgPreview.appendChild(inline);
+      });
+    };
+
+    function applyFilters(data, cutoff, sampleRate) {
+      const riaaFiltered = data.map((sample, i) => {
+        // crude inverse RIAA: boost highs
+        const freq = i / data.length * sampleRate;
+        const boost = freq > 5000 ? 2.5 : freq > 1000 ? 1.5 : 1;
+        return sample * boost;
+      });
+      return lowPassFilter(riaaFiltered, cutoff, sampleRate);
+    }
 
     function lowPassFilter(data, cutoff, sampleRate) {
       const RC = 1.0 / (cutoff * 2 * Math.PI);
@@ -82,7 +119,16 @@
       return output;
     }
 
-    function generateGrooveSVG(audioData, sizeInches) {
+    function splitAudio(data, parts) {
+      const len = Math.floor(data.length / parts);
+      let split = [];
+      for (let i = 0; i < parts; i++) {
+        split.push(data.slice(i * len, (i + 1) * len));
+      }
+      return split;
+    }
+
+    function generateGrooveSVG(audioData, sizeInches, index) {
       const svgNS = "http://www.w3.org/2000/svg";
       const svgSize = 1500;
       const center = svgSize / 2;
