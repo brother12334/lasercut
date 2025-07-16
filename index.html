@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Vinyl Groove SVG Generator</title>
+  <style>
+    body { font-family: sans-serif; padding: 2em; background: #f0f0f0; }
+    #waveform { width: 100%; height: 100px; background: white; margin: 1em 0; }
+    canvas { border: 1px solid #ccc; }
+    label, select, input, button { margin: 0.5em 0; display: block; }
+  </style>
+</head>
+<body>
+  <h1>Vinyl Groove SVG Generator</h1>
+
+  <label for="audioFile">Upload WAV File:</label>
+  <input type="file" id="audioFile" accept="audio/wav">
+
+  <label for="recordSize">Record Size:</label>
+  <select id="recordSize">
+    <option value="7">7 inch</option>
+    <option value="10">10 inch</option>
+    <option value="12" selected>12 inch</option>
+  </select>
+
+  <label for="cutoff">Low Pass Filter Cutoff (Hz):</label>
+  <input type="number" id="cutoff" value="2500">
+
+  <button id="generateBtn">Generate SVG</button>
+  <a id="downloadLink" style="display:none;">Download SVG</a>
+
+  <script>
+    const fileInput = document.getElementById('audioFile');
+    const recordSize = document.getElementById('recordSize');
+    const cutoffInput = document.getElementById('cutoff');
+    const generateBtn = document.getElementById('generateBtn');
+    const downloadLink = document.getElementById('downloadLink');
+
+    generateBtn.onclick = () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        alert("Please upload a WAV file.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const buffer = await audioCtx.decodeAudioData(e.target.result);
+
+        // Get mono data from first channel
+        const inputData = buffer.getChannelData(0);
+
+        // Low-pass filter using simple method (not perfect)
+        const filteredData = lowPassFilter(inputData, +cutoffInput.value, buffer.sampleRate);
+
+        // Normalize
+        const max = Math.max(...filteredData.map(x => Math.abs(x)));
+        const normalized = filteredData.map(x => x / max);
+
+        // Generate SVG groove
+        const svg = generateGrooveSVG(normalized, recordSize.value);
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = 'vinyl_groove.svg';
+        downloadLink.textContent = 'Download SVG';
+        downloadLink.style.display = 'block';
+      };
+      reader.readAsArrayBuffer(file);
+    };
+
+    function lowPassFilter(data, cutoff, sampleRate) {
+      const RC = 1.0 / (cutoff * 2 * Math.PI);
+      const dt = 1.0 / sampleRate;
+      const alpha = dt / (RC + dt);
+      let output = [];
+      output[0] = data[0];
+      for (let i = 1; i < data.length; i++) {
+        output[i] = output[i - 1] + (alpha * (data[i] - output[i - 1]));
+      }
+      return output;
+    }
+
+    function generateGrooveSVG(audioData, sizeInches) {
+      const svgNS = "http://www.w3.org/2000/svg";
+      const svgSize = 1500;
+      const center = svgSize / 2;
+      const spacing = 2; // spacing between grooves
+      const scale = 200; // amplitude scale
+      const totalGrooves = Math.floor((+sizeInches * 100 - 400) / spacing);
+
+      let radius = +sizeInches * 25.4 / 2; // mm to px-ish for demo
+      let path = "<path d='";
+      let angle = 0;
+      let thetaStep = (2 * Math.PI) / audioData.length;
+
+      for (let i = 0; i < audioData.length; i++) {
+        const modRadius = radius - (spacing * i / audioData.length);
+        const r = modRadius + audioData[i] * scale;
+        const x = center + r * Math.cos(angle);
+        const y = center + r * Math.sin(angle);
+        path += (i === 0 ? "M" : "L") + x.toFixed(2) + "," + y.toFixed(2) + " ";
+        angle += thetaStep;
+      }
+      path += "' stroke='black' fill='none' stroke-width='0.2'/>";
+
+      const svg = `<svg xmlns='${svgNS}' width='${svgSize}' height='${svgSize}' viewBox='0 0 ${svgSize} ${svgSize}'>` + path + `</svg>`;
+      return svg;
+    }
+  </script>
+</body>
+</html>
