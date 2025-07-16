@@ -5,7 +5,6 @@
   <title>Vinyl Groove SVG Generator</title>
   <style>
     body { font-family: sans-serif; padding: 2em; background: #f0f0f0; }
-    #svgPreview { width: 100%; border: 1px solid #ccc; margin-top: 1em; background: #fff; }
     label, select, input, button { margin: 0.5em 0; display: block; }
   </style>
 </head>
@@ -34,7 +33,6 @@
 
   <button id="previewAudio">Play Filtered Audio</button>
   <button id="generateBtn">Generate SVG</button>
-  <div id="svgPreview"></div>
 
   <script>
     let audioBuffer, filteredAudio;
@@ -44,7 +42,6 @@
     const cutoffInput = document.getElementById('cutoff');
     const generateBtn = document.getElementById('generateBtn');
     const previewBtn = document.getElementById('previewAudio');
-    const svgPreview = document.getElementById('svgPreview');
     const splitCountInput = document.getElementById('splitCount');
 
     let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -75,7 +72,6 @@
       const recordInches = +recordSize.value;
       const splitCount = +splitCountInput.value;
       const parts = splitAudio(filteredAudio, splitCount);
-      svgPreview.innerHTML = '';
 
       parts.forEach((part, idx) => {
         const svg = generateSpiralGrooveSVG(part, recordInches, idx);
@@ -85,13 +81,7 @@
         const dl = document.createElement('a');
         dl.href = url;
         dl.download = `vinyl_groove_part${idx + 1}.svg`;
-        dl.textContent = `Download SVG Part ${idx + 1}`;
-        dl.style.display = 'block';
-        svgPreview.appendChild(dl);
-
-        const inline = document.createElement('div');
-        inline.innerHTML = svg;
-        svgPreview.appendChild(inline);
+        dl.click();
       });
     };
 
@@ -161,7 +151,7 @@
         }
       }
 
-      return `<svg xmlns='${svgNS}' viewBox='0 0 ${cutterWidth * scaleNum} ${cutterHeight * scaleNum}'><path d='${path}' stroke='black' fill='none' stroke-width='0.2'/></svg>`;
+      return `<svg xmlns='${svgNS}' viewBox='0 0 ${12 * scaleNum} ${12 * scaleNum}'><path d='${path}' stroke='black' fill='none' stroke-width='0.2'/></svg>`;
     }
   </script>
 </body>
