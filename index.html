@@ -5,7 +5,7 @@
   <title>Vinyl Groove SVG Generator</title>
   <style>
     body { font-family: sans-serif; padding: 2em; background: #f0f0f0; }
-    #svgPreview { width: 100%; height: 400px; border: 1px solid #ccc; margin-top: 1em; background: #fff; }
+    #svgPreview { width: 100%; border: 1px solid #ccc; margin-top: 1em; background: #fff; }
     label, select, input, button { margin: 0.5em 0; display: block; }
   </style>
 </head>
@@ -35,7 +35,6 @@
   <button id="previewAudio">Play Filtered Audio</button>
   <button id="generateBtn">Generate SVG</button>
   <div id="svgPreview"></div>
-  <a id="downloadLink" style="display:none;">Download SVG</a>
 
   <script>
     let audioBuffer, filteredAudio;
@@ -45,7 +44,6 @@
     const cutoffInput = document.getElementById('cutoff');
     const generateBtn = document.getElementById('generateBtn');
     const previewBtn = document.getElementById('previewAudio');
-    const downloadLink = document.getElementById('downloadLink');
     const svgPreview = document.getElementById('svgPreview');
     const splitCountInput = document.getElementById('splitCount');
 
@@ -78,13 +76,13 @@
       const splitCount = +splitCountInput.value;
       const parts = splitAudio(filteredAudio, splitCount);
       svgPreview.innerHTML = '';
-      downloadLink.style.display = 'none';
 
       parts.forEach((part, idx) => {
-        const svg = generateGrooveSVG(part, recordInches, idx);
+        const svg = generateSpiralGrooveSVG(part, recordInches, idx);
         const blob = new Blob([svg], { type: 'image/svg+xml' });
         const url = URL.createObjectURL(blob);
-        const dl = downloadLink.cloneNode();
+
+        const dl = document.createElement('a');
         dl.href = url;
         dl.download = `vinyl_groove_part${idx + 1}.svg`;
         dl.textContent = `Download SVG Part ${idx + 1}`;
@@ -99,9 +97,8 @@
 
     function applyFilters(data, cutoff, sampleRate) {
       const riaaFiltered = data.map((sample, i) => {
-        // crude inverse RIAA: boost highs
         const freq = i / data.length * sampleRate;
-        const boost = freq > 5000 ? 2.5 : freq > 1000 ? 1.5 : 1;
+        const boost = freq > 10000 ? 3 : freq > 5000 ? 2 : 1;
         return sample * boost;
       });
       return lowPassFilter(riaaFiltered, cutoff, sampleRate);
@@ -128,31 +125,43 @@
       return split;
     }
 
-    function generateGrooveSVG(audioData, sizeInches, index) {
+    function generateSpiralGrooveSVG(audioData, sizeInches, index) {
       const svgNS = "http://www.w3.org/2000/svg";
-      const svgSize = 1500;
-      const center = svgSize / 2;
-      const spacing = 2; // spacing between grooves
-      const scale = 200; // amplitude scale
-      const totalGrooves = Math.floor((+sizeInches * 100 - 400) / spacing);
+      const scaleNum = 72;
+      const dpi = 1200;
+      const amplitude = 10 / dpi * scaleNum;
+      const spacing = 10 / dpi * scaleNum;
+      const minDist = 6.0 / dpi * scaleNum;
+      const outerRad = 5.75 * scaleNum;
+      const innerRad = 2.25 * scaleNum;
+      const thetaIter = 5880;
 
-      let radius = +sizeInches * 25.4 / 2; // mm to px-ish for demo
-      let path = "<path d='";
-      let angle = 0;
-      let thetaStep = (2 * Math.PI) / audioData.length;
+      let radius = outerRad;
+      let theta = 0;
+      let path = "M";
+      let xValLast = 0, yValLast = 0;
+      const incrNum = 2 * Math.PI / thetaIter;
+      const radIncrNum = (2 * amplitude + spacing) / thetaIter;
+      const center = 6 * scaleNum;
+      let indexPtr = 0;
+      const indexIncr = Math.floor(audioData.length / ((outerRad - innerRad) / radIncrNum));
 
-      for (let i = 0; i < audioData.length; i++) {
-        const modRadius = radius - (spacing * i / audioData.length);
-        const r = modRadius + audioData[i] * scale;
-        const x = center + r * Math.cos(angle);
-        const y = center + r * Math.sin(angle);
-        path += (i === 0 ? "M" : "L") + x.toFixed(2) + "," + y.toFixed(2) + " ";
-        angle += thetaStep;
+      while (radius > innerRad && indexPtr < audioData.length - thetaIter * indexIncr) {
+        for (theta = 0; theta < 2 * Math.PI; theta += incrNum) {
+          const mod = radius + audioData[indexPtr % audioData.length] * amplitude;
+          const x = center + mod * Math.cos(theta);
+          const y = center - mod * Math.sin(theta);
+          if (((x - xValLast) ** 2 + (y - yValLast) ** 2) > (minDist * minDist)) {
+            path += `${x.toFixed(2)},${y.toFixed(2)} ` + (theta + incrNum < 2 * Math.PI ? 'L' : '');
+            xValLast = x;
+            yValLast = y;
+          }
+          radius -= radIncrNum;
+          indexPtr += indexIncr;
+        }
       }
-      path += "' stroke='black' fill='none' stroke-width='0.2'/>";
 
-      const svg = `<svg xmlns='${svgNS}' width='${svgSize}' height='${svgSize}' viewBox='0 0 ${svgSize} ${svgSize}'>` + path + `</svg>`;
-      return svg;
+      return `<svg xmlns='${svgNS}' viewBox='0 0 ${cutterWidth * scaleNum} ${cutterHeight * scaleNum}'><path d='${path}' stroke='black' fill='none' stroke-width='0.2'/></svg>`;
     }
   </script>
 </body>
